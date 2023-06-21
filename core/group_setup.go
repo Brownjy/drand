@@ -185,7 +185,8 @@ func (s *setupManager) ReceivedKey(addr string, p *drand.SignalDKGPacket) error 
 
 	if err := newID.ValidSignature(); err != nil {
 		s.l.Errorw("invalid identity signature in ReceivedKey", "id", addr, "err", err)
-		return errors.Join(fmt.Errorf("invalid sig: %w", err), key.ErrInvalidKeyScheme)
+		//nolint:errorlint
+		return fmt.Errorf("invalid sig: %v - %w", err, key.ErrInvalidKeyScheme)
 	}
 
 	s.l.Debugw("", "setup", "received_new_key", "id", newID.String())
