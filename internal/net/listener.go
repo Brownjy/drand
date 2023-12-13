@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	pdkg "github.com/drand/drand/protobuf/dkg"
 	grpcmiddleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpcrecovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	grpcprometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
@@ -14,8 +15,8 @@ import (
 	httpgrpcserver "github.com/weaveworks/common/httpgrpc/server"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
-
-	pdkg "github.com/drand/drand/protobuf/dkg"
+	"google.golang.org/grpc/health"
+	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/drand/drand/common/log"
 	"github.com/drand/drand/internal/metrics"
@@ -68,11 +69,14 @@ func NewGRPCListenerForPrivate(ctx context.Context, bindingAddr string, s Servic
 	drand.RegisterPublicServer(grpcServer, s)
 	drand.RegisterProtocolServer(grpcServer, s)
 	pdkg.RegisterDKGControlServer(grpcServer, s)
+	healthcheck := health.NewServer()
+	healthgrpc.RegisterHealthServer(grpcServer, healthcheck)
 
 	g := &grpcListener{
-		Service:    s,
-		grpcServer: grpcServer,
-		lis:        lis,
+		Service:      s,
+		grpcServer:   grpcServer,
+		lis:          lis,
+		healthServer: healthcheck,
 	}
 
 	//// TODO: remove httpgrpcserver from our codebase
@@ -137,8 +141,9 @@ func (g *restListener) Stop(ctx context.Context) {
 
 type grpcListener struct {
 	Service
-	grpcServer *grpc.Server
-	lis        net.Listener
+	grpcServer   *grpc.Server
+	lis          net.Listener
+	healthServer *health.Server
 }
 
 func (g *grpcListener) Addr() string {
@@ -148,10 +153,13 @@ func (g *grpcListener) Addr() string {
 func (g *grpcListener) Start() {
 	go func() {
 		_ = g.grpcServer.Serve(g.lis)
+		g.healthServer.SetServingStatus("", healthgrpc.HealthCheckResponse_SERVING)
 	}()
 }
 
 func (g *grpcListener) Stop(_ context.Context) {
+	g.healthServer.SetServingStatus("", healthgrpc.HealthCheckResponse_NOT_SERVING)
+
 	g.grpcServer.Stop()
 	_ = g.lis.Close()
 }
