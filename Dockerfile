@@ -1,69 +1,34 @@
-FROM --platform=linux/amd64 golang:1.20.1-buster AS builder
-MAINTAINER Hector Sanjuan <hector@protocol.ai>
+# 基于官方 Golang 镜像构建
+FROM golang:1.20.1 AS builder
 
-ARG major=0
-ARG minor=0
-ARG patch=0
-ARG gitCommit
+# 设置工作目录
+WORKDIR /app
 
-ENV GOPATH /go
-ENV SRC_PATH $GOPATH/src/github.com/drand/drand/
-ENV GOPROXY https://proxy.golang.org
+# 将 drand 源码复制到容器中
+COPY . .
 
-ENV SUEXEC_VERSION v0.2
-ENV TINI_VERSION v0.19.0
-RUN set -x \
-  && cd /tmp \
-  && git clone https://github.com/ncopa/su-exec.git \
-  && cd su-exec \
-  && git checkout -q $SUEXEC_VERSION \
-  && make \
-  && cd /tmp \
-  && wget -q -O tini https://github.com/krallin/tini/releases/download/$TINI_VERSION/tini \
-  && chmod +x tini
+# 编译 drand 程序
+RUN make install
 
-# Get the TLS CA certificates, they're not provided by busybox.
-RUN apt-get update && apt-get install -y ca-certificates
+# 生成 drand keypair
+RUN drand generate-keypair --id default --scheme pedersen-bls-chained drand.kenlabs.org:443 > /root/.drand/group.toml
 
-COPY go.* $SRC_PATH
-WORKDIR $SRC_PATH
-RUN go mod download
+# 创建运行时镜像
+FROM ubuntu:20.04
 
-COPY . $SRC_PATH
-RUN \
-  go install \
-  -mod=readonly \
-  -ldflags \
-  "-X github.com/drand/drand/v2/common.COMMIT=${gitCommit} \
-  -X github.com/drand/drand/v2/common.BUILDDATE=`date -u +%d/%m/%Y@%H:%M:%S` \
-  -X github.com/drand/drand/v2/internal/drand-cli.buildDate=`date -u +%d/%m/%Y@%H:%M:%S` \
-  -X github.com/drand/drand/v2/internal/drand-cli.gitCommit=${gitCommit}" \
-  ./cmd/drand
+# 从构建阶段复制已编译的 drand 可执行文件
+COPY --from=builder /go/bin/drand /usr/local/bin/
 
-FROM --platform=linux/amd64 busybox:1-glibc
-MAINTAINER Hector Sanjuan <hector@protocol.ai>
+# 从构建阶段复制生成的 drand keypair 文件
+COPY --from=builder /root/.drand/group.toml /root/.drand/
 
-ENV GOPATH                 /go
-ENV SRC_PATH               /go/src/github.com/drand/drand
-ENV DRAND_HOME             /data/drand
-ENV DRAND_PUBLIC_ADDRESS   ""
+# 设置工作目录
+WORKDIR /app
 
+# 暴露端口
 EXPOSE 8888
-EXPOSE 4444
+EXPOSE 8080
+EXPOSE 9999
 
-COPY --from=builder $GOPATH/bin/drand /usr/local/bin/drand
-COPY --from=builder $SRC_PATH/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
-COPY --from=builder /tmp/su-exec/su-exec /sbin/su-exec
-COPY --from=builder /tmp/tini /sbin/tini
-COPY --from=builder /etc/ssl/certs /etc/ssl/certs
-
-RUN mkdir -p $DRAND_HOME && \
-  addgroup -g 994 drand && \
-  adduser -D -h $DRAND_HOME -u 996 -G drand drand && \
-  chown drand:drand $DRAND_HOME
-
-VOLUME $DRAND_HOME
-ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/entrypoint.sh"]
-
-# Defaults for drand go here
-CMD ["start", "--control 8888", "--private-listen 0.0.0.0:4444"]
+# 容器启动时执行 drand
+CMD ["drand", "start", "--tls-disable", "--verbose", "--control", "8888", "--private-listen", "0.0.0.0:8080", "--metrics", "127.0.0.1:9999"]
