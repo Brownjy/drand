@@ -1,0 +1,12 @@
+apiVersion: v2
+name: drand
+description: Install drand.
+version: 1.0.0
+kubeVersion: < 1.28.0-0
+home: https://drand.kenlabs.org/
+keywords:
+  - drand
+sources:
+  - https://github.com/Brownjy/drand
+maintainers:
+  - name: drand team

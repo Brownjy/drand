@@ -1,0 +1,20 @@
+service.yaml:
+apiVersion: v1
+kind: Service
+metadata:
+  name: drand-service
+  labels:
+    app: drand
+spec:
+  type: ClusterIP
+  selector:
+    app: drand
+  ports:
+    - protocol: TCP
+      port: 8080 # 指定Service暴露的端口号
+      targetPort: 8080 # 指定Service将流量转发到的目标端口号
+    - protocol: TCP
+      port: 9999 # 指定度量指标的端口号
+      targetPort: 9999 # 指定度量指标将流量转发到的目标端口号
+    - protocol: 8888
+      targetPort: 8888

@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: drand-deployment
+  labels:
+    app: drand
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: drand
+  template:
+    metadata:
+      labels:
+        app: drand
+    spec:
+      containers:
+      - name: drand-container
+        image: gitdatateam/drand:v2.0.5-testnet
+        ports:
+        - containerPort: 8080 # 指定容器内的端口号
+        - containerPort: 9999 # 指定容器内的度量指标端口号
+        - containerPort: 8888 # 指定容器内的控制端口号
+        # 可以在这里添加其他容器配置，例如环境变量、卷挂载等
